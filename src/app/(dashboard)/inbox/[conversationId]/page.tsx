@@ -1,132 +1,169 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { Layout } from '@/components/layout/Layout';
-import { ConversationList } from '@/components/chat/ConversationList';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import { MessageInput } from '@/components/chat/MessageInput';
-import { useConversations } from '@/hooks/useConversations';
 import { useMessages } from '@/hooks/useMessages';
 import { useSocket } from '@/contexts/SocketContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { getOtherParticipant, getParticipantName } from '@/utils/helpers';
-import { Conversation } from '@/types/chat';
+import { Conversation, Message } from '@/types/chat';
+import api from '@/services/api';
 
 export default function ConversationPage() {
     const params = useParams();
+    const router = useRouter();
     const conversationId = params.conversationId as string;
+    const { messages } = useMessages(conversationId);
+    const { sendMessage } = useSocket();
     const { user } = useAuth();
-    const { conversations, isLoading: conversationsLoading } = useConversations();
-    const { messages, isLoading: messagesLoading, addMessage } = useMessages(conversationId);
-    const {
-        joinConversation,
-        leaveConversation,
-        sendMessage,
-        startTyping,
-        stopTyping,
-        onMessageReceived,
-        onUserTyping,
-        isConnected,
-    } = useSocket();
+    const [localMessages, setLocalMessages] = React.useState<Message[]>(messages);
+    const [conversation, setConversation] = React.useState<Conversation | null>(null);
 
-    const [isTyping, setIsTyping] = useState(false);
-    const [typingUserName, setTypingUserName] = useState<string>();
-    const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
-
-    useEffect(() => {
-        if (conversationId) {
-            joinConversation(conversationId);
-        }
-        return () => {
-            if (conversationId) {
-                leaveConversation(conversationId);
+    // Fetch conversation details
+    React.useEffect(() => {
+        const fetchConversation = async () => {
+            try {
+                const response = await api.get(`/conversations/${conversationId}`);
+                setConversation(response.data.data.conversation);
+            } catch (error) {
+                console.error('Failed to fetch conversation:', error);
             }
         };
-    }, [conversationId, joinConversation, leaveConversation]);
+        if (conversationId) {
+            fetchConversation();
+        }
+    }, [conversationId]);
 
-    useEffect(() => {
-        const unsubscribe = onMessageReceived((message) => {
-            if (message.conversationId === conversationId) {
-                addMessage(message);
+    React.useEffect(() => {
+        setLocalMessages(messages);
+    }, [messages]);
+
+    // Socket event listeners for new messages
+    const { onMessageReceived } = useSocket();
+
+    React.useEffect(() => {
+        const unsubscribe = onMessageReceived((msg) => {
+            console.log('Received message via socket:', msg);
+            console.log('Message attachments:', msg?.attachments);
+
+            if (msg.conversationId === conversationId) {
+                setLocalMessages((prev) => {
+                    // Check if message already exists by _id
+                    const existsById = prev.some(m => m._id === msg._id);
+                    if (existsById) {
+                        console.log('Message already exists by ID, skipping');
+                        return prev;
+                    }
+
+                    // Check if this is a confirmation of an optimistic message we sent
+                    // Match by sender, content, and approximate timestamp (within 5 seconds)
+                    const isOptimisticDuplicate = prev.some(m => {
+                        const isTemp = m._id?.toString().startsWith('temp-');
+                        const sameSender = m.senderId?._id === msg.senderId?._id;
+                        const sameContent = m.content === msg.content;
+                        const sameAttachments = m.attachments?.length === msg.attachments?.length &&
+                            m.attachments?.[0]?.name === msg.attachments?.[0]?.name;
+                        const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime());
+                        const withinTimeWindow = timeDiff < 5000; // 5 seconds
+
+                        return isTemp && sameSender && (sameContent || sameAttachments) && withinTimeWindow;
+                    });
+
+                    if (isOptimisticDuplicate) {
+                        console.log('Replacing optimistic message with server-confirmed message');
+                        // Replace the optimistic message with the real one
+                        return prev.map(m => {
+                            const isTemp = m._id?.toString().startsWith('temp-');
+                            const sameSender = m.senderId?._id === msg.senderId?._id;
+                            const sameContent = m.content === msg.content;
+                            const sameAttachments = m.attachments?.length === msg.attachments?.length &&
+                                m.attachments?.[0]?.name === msg.attachments?.[0]?.name;
+                            const timeDiff = Math.abs(new Date(m.createdAt).getTime() - new Date(msg.createdAt).getTime());
+                            const withinTimeWindow = timeDiff < 5000;
+
+                            if (isTemp && sameSender && (sameContent || sameAttachments) && withinTimeWindow) {
+                                return msg; // Replace with server message
+                            }
+                            return m;
+                        });
+                    }
+
+                    console.log('Adding new message to local state');
+                    return [...prev, msg];
+                });
             }
         });
-        return unsubscribe;
-    }, [conversationId, onMessageReceived, addMessage]);
+        return () => unsubscribe();
+    }, [onMessageReceived, conversationId]);
 
-    useEffect(() => {
-        const unsubscribe = onUserTyping((data) => {
-            if (data.conversationId === conversationId && data.userId !== user?._id) {
-                if (data.isTyping) {
-                    const other = getOtherParticipant(currentConversation?.participants || [], user?._id || '');
-                    setTypingUserName(getParticipantName(other));
-                    setIsTyping(true);
-                } else {
-                    setIsTyping(false);
-                }
-            }
+    const handleSendMessage = useCallback((content: string, attachments?: unknown[]) => {
+        console.log('Sending message with attachments:', { content, attachments, conversationId });
+
+        if (!content.trim() && (!attachments || attachments.length === 0)) {
+            console.warn('Cannot send empty message');
+            return;
+        }
+
+        // Generate a unique temp ID for this message
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        // Optimistically add message to local state BEFORE sending via socket
+        if (user) {
+            const optimisticMessage: Message = {
+                id: tempId,
+                _id: tempId,
+                conversationId,
+                senderId: {
+                    _id: user._id,
+                    email: user.email,
+                    role: user.role,
+                    profile: user.profile || { firstName: '', lastName: '', avatar: '' },
+                },
+                content,
+                attachments: attachments as Array<{
+                    url: string;
+                    type: string;
+                    name: string;
+                    size?: number;
+                    isImage?: boolean;
+                    thumbnailUrl?: string;
+                }>,
+                status: 'sent',
+                readBy: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+            setLocalMessages((prev) => [...prev, optimisticMessage]);
+        }
+
+        // Send via socket
+        sendMessage({
+            conversationId,
+            content,
+            attachments,
         });
-        return unsubscribe;
-    }, [conversationId, onUserTyping, user?._id, currentConversation]);
+    }, [conversationId, sendMessage, user]);
 
-    useEffect(() => {
-        const conv = conversations.find((c) => c._id === conversationId);
-        setCurrentConversation(conv || null);
-    }, [conversations, conversationId]);
-
-    const handleSendMessage = (content: string) => {
-        sendMessage({ conversationId, content });
-    };
-
-    const otherParticipant = currentConversation
-        ? getOtherParticipant(currentConversation.participants, user?._id || '')
-        : undefined;
+    if (!conversation) {
+        return (
+            <Layout>
+                <div className="flex h-full items-center justify-center">
+                    <div className="text-gray-500 dark:text-gray-400">Loading conversation...</div>
+                </div>
+            </Layout>
+        );
+    }
 
     return (
         <Layout>
-            <div className="flex h-full">
-                <div className="w-80 border-r border-gray-200 dark:border-gray-700">
-                    <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-700">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Conversations</h2>
-                    </div>
-                    <ConversationList
-                        conversations={conversations}
-                        selectedId={conversationId}
-                        isLoading={conversationsLoading}
-                    />
-                </div>
-
-                <div className="flex flex-1 flex-col">
-                    <div className="flex h-16 items-center justify-between border-b border-gray-200 px-6 dark:border-gray-700">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-sm font-medium text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                                {otherParticipant ? getParticipantName(otherParticipant).charAt(0) : '?'}
-                            </div>
-                            <div>
-                                <h3 className="font-medium text-gray-900 dark:text-white">
-                                    {getParticipantName(otherParticipant) || 'Loading...'}
-                                </h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {isConnected ? 'Online' : 'Offline'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <ChatWindow
-                        messages={messages}
-                        isTyping={isTyping}
-                        typingUserName={typingUserName}
-                        isLoading={messagesLoading}
-                    />
-
-                    <MessageInput
-                        onSendMessage={handleSendMessage}
-                        onTypingStart={() => startTyping(conversationId)}
-                        onTypingStop={() => stopTyping(conversationId)}
-                        disabled={!isConnected}
-                    />
-                </div>
+            <div className="flex h-full flex-col">
+                <ChatWindow
+                    conversation={conversation}
+                    messages={localMessages}
+                    onSendMessage={handleSendMessage}
+                    onBack={() => router.push('/inbox')}
+                />
             </div>
         </Layout>
     );

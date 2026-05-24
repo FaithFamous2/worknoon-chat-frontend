@@ -14,8 +14,9 @@ export function useMessages(conversationId: string | null) {
 
     try {
       setIsLoading(true);
-      const response = await api.get(`/messages/${conversationId}`);
-      setMessages(response.data.data);
+      const response = await api.get(`/messages/conversations/${conversationId}`);
+      // API returns { messages: [...], hasMore, total }
+      setMessages(response.data.data.messages || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch messages');

@@ -4,19 +4,28 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
+const roleRedirects: Record<string, string> = {
+  admin: '/admin/dashboard',
+  agent: '/agent/dashboard',
+  designer: '/designer/dashboard',
+  merchant: '/merchant/dashboard',
+  customer: '/customer/dashboard',
+};
+
 export default function Home() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoading) {
-      if (isAuthenticated) {
-        router.push('/inbox');
+      if (isAuthenticated && user) {
+        const redirectPath = roleRedirects[user.role] || '/inbox';
+        router.push(redirectPath);
       } else {
         router.push('/login');
       }
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, user, router]);
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">

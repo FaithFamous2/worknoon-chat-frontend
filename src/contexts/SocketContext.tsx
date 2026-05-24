@@ -4,12 +4,125 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { Socket } from 'socket.io-client';
 import { disconnectSocket, reconnectSocket } from '@/services/socket';
 import { useAuth } from './AuthContext';
-import { Message } from '@/types/chat';
+import { Message, Conversation } from '@/types/chat';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GenericCallback = (...args: any[]) => void;
-interface TypingData { userId: string; isTyping: boolean; conversationId: string; firstName?: string; }
-interface MessagesReadData { userId: string; conversationId: string; messageIds: string[]; }
+
+interface TypingData {
+  userId: string;
+  isTyping: boolean;
+  conversationId: string;
+  firstName?: string;
+  lastName?: string;
+  timestamp?: string;
+}
+
+interface ReadMessageInfo {
+  _id: string;
+  status: string;
+}
+
+interface MessagesReadData {
+  userId: string;
+  conversationId: string;
+  messageIds: string[];
+  readMessages: ReadMessageInfo[];
+}
+
+interface NotificationsClearedData {
+  conversationId: string;
+  deletedCount: number;
+}
+
+interface UnreadCountData {
+  count: number;
+}
+
+interface ChatAssignedData {
+  conversation: Conversation;
+  notification: unknown;
+  customerName: string;
+  initialMessage: string;
+}
+
+interface SupportChatCreatedData {
+  conversation: Conversation;
+  message: Message;
+  assignedAgent: {
+    _id: string;
+    email: string;
+    profile: {
+      firstName?: string;
+      lastName?: string;
+      avatar?: string;
+    };
+    status: {
+      isOnline: boolean;
+      lastSeen?: string;
+    };
+  };
+}
+
+interface ChatTransferredData {
+  conversationId: string;
+  transferredTo: {
+    _id: string;
+    email: string;
+    profile: {
+      firstName?: string;
+      lastName?: string;
+      avatar?: string;
+    };
+    role: string;
+  };
+  transferredBy: {
+    _id: string;
+    name: string;
+    role: string;
+  };
+  reason?: string;
+  systemMessage?: Message;
+}
+
+interface OnlineUsersData {
+  conversationId: string;
+  onlineUsers: Array<{
+    _id: string;
+    email: string;
+    profile: {
+      firstName?: string;
+      lastName?: string;
+      avatar?: string;
+    };
+    status: {
+      isOnline: boolean;
+      lastSeen?: string;
+    };
+  }>;
+}
+
+interface UserOnlineData {
+  userId: string;
+}
+
+interface UserOfflineData {
+  userId: string;
+}
+
+interface OnlineUserInfo {
+  userId: string;
+  role: string;
+  profile?: {
+    firstName?: string;
+    lastName?: string;
+    avatar?: string;
+  };
+}
+
+interface ErrorData {
+  message: string;
+}
 
 interface SocketContextType {
   socket: Socket | null;
@@ -20,9 +133,26 @@ interface SocketContextType {
   startTyping: (conversationId: string) => void;
   stopTyping: (conversationId: string) => void;
   markRead: (conversationId: string, messageIds: string[]) => void;
+  initiateSupportChat: (data: { message: string; context?: Record<string, unknown> }) => void;
+  acceptChat: (conversationId: string) => void;
+  transferChat: (data: { conversationId: string; targetUserId: string; reason?: string }) => void;
+  getOnlineUsers: (conversationId: string) => void;
   onMessageReceived: (callback: (message: Message) => void) => () => void;
   onUserTyping: (callback: (data: TypingData) => void) => () => void;
   onMessagesRead: (callback: (data: MessagesReadData) => void) => () => void;
+  onNotificationsCleared: (callback: (data: NotificationsClearedData) => void) => () => void;
+  onUnreadCountUpdated: (callback: (data: UnreadCountData) => void) => () => void;
+  onChatAssigned: (callback: (data: ChatAssignedData) => void) => () => void;
+  onSupportChatCreated: (callback: (data: SupportChatCreatedData) => void) => () => void;
+  onChatAccepted: (callback: (data: { conversation: Conversation }) => void) => () => void;
+  onChatTransferred: (callback: (data: ChatTransferredData) => void) => () => void;
+  onChatTransferredToYou: (callback: (data: { conversation: Conversation; notification: unknown; transferredBy: { _id: string; name: string; role: string }; reason?: string }) => void) => () => void;
+  onChatTransferSuccess: (callback: (data: { conversation: Conversation; targetUser: { _id: string; email: string; profile: { firstName?: string; lastName?: string } } }) => void) => () => void;
+  onOnlineUsers: (callback: (data: OnlineUsersData) => void) => () => void;
+  onUserOnline: (callback: (data: UserOnlineData) => void) => () => void;
+  onUserOffline: (callback: (data: UserOfflineData) => void) => () => void;
+  onOnlineUsersList: (callback: (data: { users: OnlineUserInfo[] }) => void) => () => void;
+  onError: (callback: (error: ErrorData) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -85,6 +215,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket?.emit('mark_read', { conversationId, messageIds });
   }, [socket]);
 
+  const initiateSupportChat = useCallback((data: { message: string; context?: Record<string, unknown> }) => {
+    socket?.emit('initiate_support_chat', data);
+  }, [socket]);
+
+  const acceptChat = useCallback((conversationId: string) => {
+    socket?.emit('accept_chat', { conversationId });
+  }, [socket]);
+
+  const transferChat = useCallback((data: { conversationId: string; targetUserId: string; reason?: string }) => {
+    socket?.emit('transfer_chat', data);
+  }, [socket]);
+
+  const getOnlineUsers = useCallback((conversationId: string) => {
+    socket?.emit('get_online_users', { conversationId });
+  }, [socket]);
+
   const addListener = useCallback((event: string, callback: GenericCallback) => {
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set());
@@ -99,7 +245,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   }, [socket]);
 
   const onMessageReceived = useCallback((callback: (message: Message) => void) => {
-    return addListener('message_received', (data: unknown) => callback((data as Record<string, unknown>).message as Message));
+    return addListener('message_received', (data: unknown) => {
+      console.log('Socket received message_received event:', data);
+      const message = (data as Record<string, unknown>).message as Message;
+      console.log('Extracted message:', message);
+      console.log('Message attachments:', message?.attachments);
+      callback(message);
+    });
   }, [addListener]);
 
   const onUserTyping = useCallback((callback: (data: TypingData) => void) => {
@@ -108,6 +260,58 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
   const onMessagesRead = useCallback((callback: (data: MessagesReadData) => void) => {
     return addListener('messages_read', callback as GenericCallback);
+  }, [addListener]);
+
+  const onNotificationsCleared = useCallback((callback: (data: NotificationsClearedData) => void) => {
+    return addListener('notifications_cleared', callback as GenericCallback);
+  }, [addListener]);
+
+  const onUnreadCountUpdated = useCallback((callback: (data: UnreadCountData) => void) => {
+    return addListener('unread_count_updated', callback as GenericCallback);
+  }, [addListener]);
+
+  const onChatAssigned = useCallback((callback: (data: ChatAssignedData) => void) => {
+    return addListener('chat_assigned', callback as GenericCallback);
+  }, [addListener]);
+
+  const onSupportChatCreated = useCallback((callback: (data: SupportChatCreatedData) => void) => {
+    return addListener('support_chat_created', callback as GenericCallback);
+  }, [addListener]);
+
+  const onChatAccepted = useCallback((callback: (data: { conversation: Conversation }) => void) => {
+    return addListener('chat_accepted', callback as GenericCallback);
+  }, [addListener]);
+
+  const onChatTransferred = useCallback((callback: (data: ChatTransferredData) => void) => {
+    return addListener('chat_transferred', callback as GenericCallback);
+  }, [addListener]);
+
+  const onChatTransferredToYou = useCallback((callback: (data: { conversation: Conversation; notification: unknown; transferredBy: { _id: string; name: string; role: string }; reason?: string }) => void) => {
+    return addListener('chat_transferred_to_you', callback as GenericCallback);
+  }, [addListener]);
+
+  const onChatTransferSuccess = useCallback((callback: (data: { conversation: Conversation; targetUser: { _id: string; email: string; profile: { firstName?: string; lastName?: string } } }) => void) => {
+    return addListener('chat_transfer_success', callback as GenericCallback);
+  }, [addListener]);
+
+  const onOnlineUsers = useCallback((callback: (data: OnlineUsersData) => void) => {
+    return addListener('online_users', callback as GenericCallback);
+  }, [addListener]);
+
+  const onUserOnline = useCallback((callback: (data: UserOnlineData) => void) => {
+    return addListener('user_online', callback as GenericCallback);
+  }, [addListener]);
+
+  const onUserOffline = useCallback((callback: (data: UserOfflineData) => void) => {
+    return addListener('user_offline', callback as GenericCallback);
+  }, [addListener]);
+
+  const onOnlineUsersList = useCallback((callback: (data: { users: OnlineUserInfo[] }) => void) => {
+    return addListener('online_users_list', callback as GenericCallback);
+  }, [addListener]);
+
+  const onError = useCallback((callback: (error: { message: string }) => void) => {
+    return addListener('error', callback as GenericCallback);
   }, [addListener]);
 
   return (
@@ -121,9 +325,26 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         startTyping,
         stopTyping,
         markRead,
+        initiateSupportChat,
+        acceptChat,
+        transferChat,
+        getOnlineUsers,
         onMessageReceived,
         onUserTyping,
         onMessagesRead,
+        onNotificationsCleared,
+        onUnreadCountUpdated,
+        onChatAssigned,
+        onSupportChatCreated,
+        onChatAccepted,
+        onChatTransferred,
+        onChatTransferredToYou,
+        onChatTransferSuccess,
+        onOnlineUsers,
+        onUserOnline,
+        onUserOffline,
+        onOnlineUsersList,
+        onError,
       }}
     >
       {children}

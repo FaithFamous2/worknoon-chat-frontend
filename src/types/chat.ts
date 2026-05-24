@@ -23,7 +23,7 @@ export interface Participant {
     email: string;
     role: string;
     profile: { firstName: string; lastName: string; avatar: string };
-    status: { isOnline: boolean };
+    status: { isOnline: boolean; lastSeen?: string };
   };
   role: string;
   unreadCount: number;
@@ -52,6 +52,14 @@ export interface Attachment {
   type: string;
   name: string;
   size?: number;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+  fileType?: 'image' | 'video' | 'document';
+  isImage?: boolean;
+  isVideo?: boolean;
+  isDocument?: boolean;
+  duration?: number; // For videos (in seconds)
+  format?: string;
 }
 
 export interface CreateConversationPayload {

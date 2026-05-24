@@ -11,7 +11,7 @@ export function useConversations() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (retryCount = 0) => {
     if (!user) return;
 
     try {
@@ -20,6 +20,16 @@ export function useConversations() {
       setConversations(response.data.data);
       setError(null);
     } catch (err) {
+      // Handle 429 rate limit with exponential backoff
+      if (err && typeof err === 'object' && 'response' in err &&
+          err.response && typeof err.response === 'object' &&
+          'status' in err.response && err.response.status === 429) {
+        if (retryCount < 3) {
+          // Exponential backoff: 2s, 4s, 8s
+          setTimeout(() => fetchConversations(retryCount + 1), Math.min(2000 * Math.pow(2, retryCount), 10000));
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : 'Failed to fetch conversations');
     } finally {
       setIsLoading(false);

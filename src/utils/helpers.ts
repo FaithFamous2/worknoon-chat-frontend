@@ -33,6 +33,16 @@ export function formatLastSeen(dateString: string): string {
   return formatDistanceToNow(new Date(dateString), { addSuffix: true });
 }
 
+export function formatExactTime(dateString: string): string {
+  const date = new Date(dateString);
+  return format(date, 'h:mm a');
+}
+
+export function formatFullDateTime(dateString: string): string {
+  const date = new Date(dateString);
+  return format(date, 'MMM d, yyyy h:mm a');
+}
+
 export function getInitials(firstName?: string, lastName?: string): string {
   const first = firstName?.charAt(0)?.toUpperCase() || '';
   const last = lastName?.charAt(0)?.toUpperCase() || '';
