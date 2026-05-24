@@ -7,7 +7,6 @@ import { useConversations } from '@/hooks/useConversations';
 import { MessageSquare, ShoppingBag, Clock, HelpCircle, Plus, Palette, Store, Headphones } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StartConversationModal } from '@/components/chat/StartConversationModal';
-import { SupportChatButton } from '@/components/chat/SupportChatButton';
 
 export default function CustomerDashboardPage() {
     const { user } = useAuth();
@@ -120,22 +119,12 @@ export default function CustomerDashboardPage() {
                     </div>
                 </div>
 
-                {/* Mobile FAB */}
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="sm:hidden fixed bottom-6 right-6 p-4 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors z-40"
-                >
-                    <Plus className="h-6 w-6" />
-                </button>
             </div>
 
             <StartConversationModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
             />
-
-            {/* Support Chat Button - Quick access to support */}
-            <SupportChatButton />
         </Layout>
     );
 }

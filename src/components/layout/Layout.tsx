@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { ToastNotification } from './ToastNotification';
+import { SupportChatButton } from '@/components/chat/SupportChatButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { WifiOff, RefreshCw } from 'lucide-react';
 
@@ -96,6 +97,9 @@ export function Layout({ children, showSidebar = true }: LayoutProps) {
                             </div>
                         </main>
                     </div>
+
+                    {/* Support Chat Button - Only for customers */}
+                    {user?.role === 'customer' && <SupportChatButton />}
                 </div>
             ) : (
                 <div className="flex min-h-screen flex-col">
@@ -103,6 +107,8 @@ export function Layout({ children, showSidebar = true }: LayoutProps) {
                     <main className={`flex-1 ${!isOnline ? 'pt-10' : ''}`}>
                         {children}
                     </main>
+                    {/* Support Chat Button - Only for customers */}
+                    {user?.role === 'customer' && <SupportChatButton />}
                 </div>
             )}
         </div>
