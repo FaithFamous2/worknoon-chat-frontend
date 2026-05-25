@@ -63,6 +63,7 @@ export function Sidebar({ onClose }: SidebarProps) {
         { name: 'Admin Dashboard', href: '/admin/dashboard', icon: Shield, roles: ['admin'] },
         { name: 'Users', href: '/admin/users', icon: Users, roles: ['admin'] },
         { name: 'Conversations', href: '/admin/conversations', icon: MessageSquare, roles: ['admin'] },
+        { name: 'Master Tokens', href: '/admin/tokens', icon: Shield, roles: ['admin'] },
         { name: 'Analytics', href: '/admin/analytics', icon: BarChart3, roles: ['admin'] },
         { name: 'Settings', href: '/admin/settings', icon: Settings, roles: ['admin'] },
     ];

@@ -15,17 +15,16 @@ export const getSocket = (token?: string): Socket | null => {
   }
 
   if (!socket && token) {
-    console.log('Creating new Socket.IO connection to:', SOCKET_URL);
-
     socket = io(SOCKET_URL, {
       path: SOCKET_PATH,
       auth: { token },
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
-      transports: ['websocket', 'polling'],
+      reconnectionDelay: 200,       // Start fast reconnection
+      reconnectionDelayMax: 2000,   // Cap at 2s
+      randomizationFactor: 0.2,
+      timeout: 10000,               // 10s connect timeout
+      transports: ['websocket'],    // WebSocket-only - skip HTTP polling
       autoConnect: true,
     });
 
@@ -34,14 +33,16 @@ export const getSocket = (token?: string): Socket | null => {
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
       if (reason === 'io server disconnect') {
         socket?.connect();
       }
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error.message);
+      // Only log if not a transient reconnection
+      if (!socket?.connected) {
+        console.warn('Socket connection error:', error.message);
+      }
     });
   }
 

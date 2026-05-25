@@ -30,8 +30,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  }, [theme, setTheme]);
+    setThemeState((currentTheme) => {
+      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+      console.log('Toggling theme from', currentTheme, 'to', newTheme);
+      localStorage.setItem('theme', newTheme);
+      document.documentElement.classList.toggle('dark', newTheme === 'dark');
+      return newTheme;
+    });
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

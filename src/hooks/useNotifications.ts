@@ -7,7 +7,7 @@ import api from '@/services/api';
 
 export interface Notification {
   _id: string;
-  type: 'message' | 'conversation' | 'system';
+  type: 'message' | 'conversation' | 'system' | 'chat_assigned' | 'chat_transferred';
   title: string;
   content: string;
   read: boolean;
@@ -37,16 +37,13 @@ export function useNotifications() {
       try {
         const response = await api.get('/notifications');
         if (!isMounted) return;
-        // API returns paginated data directly in response.data.data
         setNotifications(response.data.data || []);
         updateUnreadCount(response.data.data || []);
-        retryCount = 0; // Reset retry count on success
+        retryCount = 0;
       } catch {
         if (!isMounted) return;
-        // Only log error, don't spam console on 429
         if (retryCount < maxRetries) {
           retryCount++;
-          // Exponential backoff
           setTimeout(fetchNotifications, Math.min(1000 * Math.pow(2, retryCount), 10000));
         }
       }
@@ -54,7 +51,7 @@ export function useNotifications() {
 
     fetchNotifications();
 
-    // Poll for notifications every 30 seconds (reduced from potential rapid polling)
+    // Poll for notifications every 30 seconds as a fallback
     const interval = setInterval(fetchNotifications, 30000);
 
     return () => {
@@ -63,7 +60,7 @@ export function useNotifications() {
     };
   }, [user]);
 
-  // Listen for new notifications via socket
+  // Listen for ALL notification events via socket
   useEffect(() => {
     if (!socket) return;
 
@@ -90,6 +87,39 @@ export function useNotifications() {
       setUnreadCount((prev) => prev + 1);
     };
 
+    const handleChatAssigned = (data: { customerName: string; initialMessage: string; conversation: { _id: string } }) => {
+      const notification: Notification = {
+        _id: 'chat-assigned-' + Date.now().toString(),
+        type: 'chat_assigned',
+        title: `New support request from ${data.customerName}`,
+        content: data.initialMessage,
+        read: false,
+        createdAt: new Date().toISOString(),
+        data: {
+          conversationId: data.conversation._id,
+          senderName: data.customerName,
+        },
+      };
+      setNotifications((prev) => [notification, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    const handleChatTransferredToYou = (data: { conversation: { _id: string }; transferredBy: { name: string; role: string }; reason?: string }) => {
+      const notification: Notification = {
+        _id: 'chat-transferred-' + Date.now().toString(),
+        type: 'chat_transferred',
+        title: `Chat transferred from ${data.transferredBy.name}`,
+        content: data.reason || `A chat has been transferred to you by ${data.transferredBy.name}`,
+        read: false,
+        createdAt: new Date().toISOString(),
+        data: {
+          conversationId: data.conversation._id,
+        },
+      };
+      setNotifications((prev) => [notification, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+    };
+
     const handleNotificationsCleared = ({ conversationId }: { conversationId: string }) => {
       setNotifications((prev) => prev.filter((n) => n.data?.conversationId !== conversationId));
     };
@@ -100,12 +130,16 @@ export function useNotifications() {
 
     socket.on('notification', handleNewNotification);
     socket.on('new_message_notification', handleMessageNotification);
+    socket.on('chat_assigned', handleChatAssigned);
+    socket.on('chat_transferred_to_you', handleChatTransferredToYou);
     socket.on('notifications_cleared', handleNotificationsCleared);
     socket.on('unread_count_updated', handleUnreadCountUpdated);
 
     return () => {
       socket.off('notification', handleNewNotification);
       socket.off('new_message_notification', handleMessageNotification);
+      socket.off('chat_assigned', handleChatAssigned);
+      socket.off('chat_transferred_to_you', handleChatTransferredToYou);
       socket.off('notifications_cleared', handleNotificationsCleared);
       socket.off('unread_count_updated', handleUnreadCountUpdated);
     };

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -92,7 +93,7 @@ export function SupportChatButton({ className }: SupportChatButtonProps) {
                         </div>
 
                         <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                            Describe your issue or question below. We'll connect you with an available support agent right away.
+                            Describe your issue or question below. {"We'll"} connect you with an available support agent right away.
                         </p>
 
                         <div className="mb-4">
