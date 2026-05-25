@@ -32,7 +32,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = useCallback(() => {
     setThemeState((currentTheme) => {
       const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-      console.log('Toggling theme from', currentTheme, 'to', newTheme);
       localStorage.setItem('theme', newTheme);
       document.documentElement.classList.toggle('dark', newTheme === 'dark');
       return newTheme;
