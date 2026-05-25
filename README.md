@@ -208,17 +208,64 @@ UI design inspired by modern chat applications on Dribbble:
 - Protected routes based on user roles
 - XSS protection through React's built-in escaping
 
+## Challenges & Solutions
+
+### Challenge 1: Real-time UI Synchronization
+**Problem**: Keeping message UI in sync across multiple tabs/windows without excessive re-renders.
+**Solution**:
+- Implemented optimistic UI updates for instant feedback
+- Used Socket.IO for server-pushed updates
+- React Query-style caching with custom hooks (useMessages, useConversations)
+- Selective re-rendering with proper dependency arrays
+
+### Challenge 2: Role-Based Route Protection
+**Problem**: Different user roles need access to different routes and components.
+**Solution**:
+- Created Higher-Order Component (HOC) pattern for protected routes
+- Route groups in Next.js App Router: `(admin)`, `(agent)`, `(customer)`, etc.
+- Middleware checks role before rendering
+- Sidebar and navigation dynamically generate based on user role
+
+### Challenge 3: Theme Persistence & Flashing
+**Problem**: Dark mode preference needs to persist and avoid flashing on page load.
+**Solution**:
+- Used `next-themes` with system preference detection
+- CSS variables for instant theme switching
+- localStorage for persistence
+- `suppressHydrationWarning` to prevent hydration mismatch
+
+### Challenge 4: File Upload UX
+**Problem**: Users need visual feedback during file uploads with progress indication.
+**Solution**:
+- Custom file input with drag-and-drop support
+- Upload progress animation with Tailwind CSS
+- Image preview before sending
+- Error handling with toast notifications
+- Cloudinary direct upload for large files
+
+### Challenge 5: Mobile-Responsive Chat Interface
+**Problem**: Chat interface needs to work well on mobile devices with limited screen space.
+**Solution**:
+- Mobile-first design with Tailwind CSS
+- Collapsible conversation list on mobile
+- Full-screen chat view on small screens
+- Touch-friendly message input with auto-resize
+- Bottom sheet for chat actions on mobile
+
+### Challenge 6: Token Refresh Without User Interruption
+**Problem**: JWT tokens expire but users shouldn't be logged out mid-session.
+**Solution**:
+- Axios interceptors for automatic token refresh
+- Silent refresh on 401 errors
+- Queue pending requests during refresh
+- Redirect to login only if refresh fails
+
 ## Performance
 
 - Next.js App Router for optimal routing
 - Image optimization with Next.js Image
 - Lazy loading of components
 - Efficient re-rendering with React hooks
+- Code splitting by route groups
+- Debounced search and typing indicators
 
-## License
-
-MIT
-
-## Support
-
-For support, please contact: careers@worknoon.com
