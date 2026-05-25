@@ -39,6 +39,14 @@ export interface Message {
     role: string;
     profile: { firstName: string; lastName: string; avatar: string };
   };
+  sender?: {
+    _id: string;
+    id: string;
+    email: string;
+    role: string;
+    profile: { firstName: string; lastName: string; avatar: string };
+    name?: string;
+  };
   content: string;
   attachments: Attachment[];
   status: 'sent' | 'delivered' | 'read';

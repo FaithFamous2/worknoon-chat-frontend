@@ -23,7 +23,8 @@ export function MessageBubble({ message, isOwn, showAvatar = false }: MessageBub
         showAvatar
     });
 
-    const sender = message.senderId;
+    // Support both sender (new format) and senderId (old format)
+    const sender = message.sender || message.senderId;
     const isSystemMessage = (message as unknown as { isSystemMessage?: boolean }).isSystemMessage;
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [previewVideo, setPreviewVideo] = useState<{ url: string; name: string } | null>(null);

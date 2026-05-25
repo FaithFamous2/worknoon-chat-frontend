@@ -83,7 +83,10 @@ export function ChatWindow({ conversation, messages, onSendMessage, onBack }: Ch
 
         // Mark messages as read when opening conversation
         const unreadMessageIds = messages
-            .filter((m) => m.senderId._id !== user?._id && m.status !== 'read')
+            .filter((m) => {
+                const senderId = m.sender?._id || m.senderId?._id;
+                return senderId !== user?._id && m.status !== 'read';
+            })
             .map((m) => m._id);
 
         if (unreadMessageIds.length > 0) {
@@ -200,7 +203,9 @@ export function ChatWindow({ conversation, messages, onSendMessage, onBack }: Ch
     // Group messages by sender for avatar display
     const groupedMessages = messages.reduce((acc, message, index) => {
         const prevMessage = messages[index - 1];
-        const showAvatar = !prevMessage || prevMessage.senderId._id !== message.senderId._id;
+        const currentSenderId = message.sender?._id || message.senderId?._id;
+        const prevSenderId = prevMessage?.sender?._id || prevMessage?.senderId?._id;
+        const showAvatar = !prevMessage || prevSenderId !== currentSenderId;
         acc.push({ message, showAvatar });
         return acc;
     }, [] as { message: Message; showAvatar: boolean }[]);
@@ -317,14 +322,17 @@ export function ChatWindow({ conversation, messages, onSendMessage, onBack }: Ch
                     </div>
                 ) : (
                     <>
-                        {groupedMessages.map(({ message, showAvatar }) => (
-                            <MessageBubble
-                                key={message._id}
-                                message={message}
-                                isOwn={message.senderId._id === user?._id}
-                                showAvatar={showAvatar}
-                            />
-                        ))}
+                        {groupedMessages.map(({ message, showAvatar }) => {
+                            const messageSenderId = message.sender?._id || message.senderId?._id;
+                            return (
+                                <MessageBubble
+                                    key={message._id}
+                                    message={message}
+                                    isOwn={messageSenderId === user?._id}
+                                    showAvatar={showAvatar}
+                                />
+                            );
+                        })}
 
                         {/* Typing indicators */}
                         {Array.from(typingUsers.values()).map((typingUser) => (

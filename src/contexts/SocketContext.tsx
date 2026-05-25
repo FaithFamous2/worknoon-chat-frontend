@@ -164,7 +164,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const listenersRef = useRef<Map<string, Set<GenericCallback>>>(new Map());
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     if (!isAuthenticated || !user) {
       if (socket) {
         disconnectSocket();
@@ -175,13 +174,40 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const token = localStorage.getItem('accessToken');
-    if (!token) return;
+    if (!token) {
+      console.log('No access token found, skipping socket connection');
+      return;
+    }
 
+    console.log('Creating socket connection for user:', user._id);
     const newSocket = reconnectSocket(token);
+    if (!newSocket) {
+      console.error('Failed to create socket connection');
+      return;
+    }
+
     setSocket(newSocket);
 
-    newSocket.on('connect', () => setIsConnected(true));
-    newSocket.on('disconnect', () => setIsConnected(false));
+    // Handle connection events
+    newSocket.on('connect', () => {
+      console.log('Socket connected successfully');
+      setIsConnected(true);
+
+      // Join user room for notifications
+      newSocket.emit('join_user_room', user._id);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      setIsConnected(false);
+    });
+
+    // If already connected, join user room immediately
+    if (newSocket.connected) {
+      console.log('Socket already connected, joining user room');
+      setIsConnected(true);
+      newSocket.emit('join_user_room', user._id);
+    }
 
     return () => {
       disconnectSocket();
@@ -231,6 +257,34 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket?.emit('get_online_users', { conversationId });
   }, [socket]);
 
+  // Re-attach all stored listeners when socket changes or reconnects
+  useEffect(() => {
+    if (!socket) return;
+
+    // Re-attach all stored listeners to the new socket
+    listenersRef.current.forEach((callbacks, event) => {
+      callbacks.forEach((callback) => {
+        socket.on(event, callback);
+      });
+    });
+
+    // Handle reconnection - re-attach listeners after reconnect
+    const handleReconnect = () => {
+      console.log('Socket reconnected, re-attaching listeners...');
+      listenersRef.current.forEach((callbacks, event) => {
+        callbacks.forEach((callback) => {
+          socket.on(event, callback);
+        });
+      });
+    };
+
+    socket.on('connect', handleReconnect);
+
+    return () => {
+      socket.off('connect', handleReconnect);
+    };
+  }, [socket]);
+
   const addListener = useCallback((event: string, callback: GenericCallback) => {
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set());
@@ -246,11 +300,17 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
   const onMessageReceived = useCallback((callback: (message: Message) => void) => {
     return addListener('message_received', (data: unknown) => {
-      console.log('Socket received message_received event:', data);
+      // Fast extraction without logging overhead in production
       const message = (data as Record<string, unknown>).message as Message;
-      console.log('Extracted message:', message);
-      console.log('Message attachments:', message?.attachments);
-      callback(message);
+
+      // Use requestAnimationFrame for smooth UI updates
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          callback(message);
+        });
+      } else {
+        callback(message);
+      }
     });
   }, [addListener]);
 
